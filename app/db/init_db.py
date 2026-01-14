@@ -1,4 +1,8 @@
+from dotenv import load_dotenv
 from app.db.database import get_conn
+
+load_dotenv()
+
 
 DDL = """
 CREATE TABLE IF NOT EXISTS scan_results (
