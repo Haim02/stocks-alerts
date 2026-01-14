@@ -1,5 +1,5 @@
 # test_trade_engine_tv.py
-from app.trade_engine_tv import build_trade_plan_from_tv
+from app.ta.trade_engine_tv import build_trade_plan_from_tv
 
 payload = {
     "ticker": "MSFT",

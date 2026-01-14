@@ -1,5 +1,5 @@
 import yfinance as yf
-from app.ta_engine import confluence_score, trade_plan, checklist_technical
+from app.ta.ta_engine import confluence_score, trade_plan, checklist_technical
 
 ticker = "AAPL"
 df = yf.download(ticker, period="1y", interval="1d", auto_adjust=False, progress=False)

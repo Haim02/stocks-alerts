@@ -1,6 +1,6 @@
 import hashlib
 from sqlalchemy.orm import Session
-from app.models_ai_cache import AiCache
+from app.db.models_ai_cache import AiCache
 
 def _hash_content(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()

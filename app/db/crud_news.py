@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
-from app.models_news import NewsCache
+from app.db.models_news import NewsCache
 
 
 def get_recent_news_for_ticker(db: Session, ticker: str, minutes: int = 60):
