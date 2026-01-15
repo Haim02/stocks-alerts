@@ -7,6 +7,7 @@ requests
 lxml
 pandas
 yfinance
+sendgrid
 
 openai==1.59.6
 psycopg2-binary
