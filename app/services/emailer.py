@@ -180,6 +180,7 @@ ALERT_TO_EMAIL = os.getenv("ALERT_TO_EMAIL", "")
 
 
 def build_email_html(title: str, html_body: str) -> str:
+    print("sent email start")
     return f"""\
 <!doctype html>
 <html>
