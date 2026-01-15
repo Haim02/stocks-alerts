@@ -443,7 +443,7 @@ from typing import Any, Dict, List, Tuple
 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-
+import socket
 import yfinance as yf
 
 # הנחה שהקבצים האלו קיימים בפרויקט שלך
@@ -702,40 +702,32 @@ def build_email(
     return subject, build_email_html(subject, body)
 
 
-def send_email(subject: str, html: str):
-    print(f"[EMAIL] Connecting to {SMTP_HOST} on port 587...")
 
+
+def send_email(subject: str, html: str):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = SMTP_USER
     msg["To"] = ALERT_TO_EMAIL
     msg.attach(MIMEText(html, "html", "utf-8"))
 
+    host = "smtp.gmail.com"
+    port = 587
+
     try:
-        # הוספנו timeout=15 כדי שאם הרשת חסומה, נדע מזה מהר ולא נתקע
-        server = smtplib.SMTP(SMTP_HOST, 587, timeout=15)
+        # פתרון לבעיית Network unreachable: מכריחים שימוש ב-IPv4
+        remote_host = socket.getaddrinfo(host, port, socket.AF_INET)[0][4][0]
+        print(f"[EMAIL] Resolved {host} to {remote_host}. Connecting...")
 
-        print("[EMAIL] Identification (EHLO)...")
+        server = smtplib.SMTP(remote_host, port, timeout=20)
         server.ehlo()
-
-        print("[EMAIL] Starting TLS...")
         server.starttls()
-
-        server.ehlo()
-
-        print("[EMAIL] Logging in...")
         server.login(SMTP_USER, SMTP_PASS)
-
-        print("[EMAIL] Sending message content...")
         server.send_message(msg)
-
         server.quit()
-        print("[EMAIL] Mail sent successfully! ✅")
-
+        print(f"[EMAIL] Mail actually sent to {ALERT_TO_EMAIL} ✅")
     except Exception as e:
-        print(f"[EMAIL] FAILED ❌ {type(e).__name__}: {str(e)}")
-        # אנחנו לא מרימים שגיאה (raise) כדי שה-FastAPI יחזיר 200 ל-TradingView
-
+        print(f"[EMAIL] ACTUAL ERROR ❌: {e}")
 
 # def send_email(subject: str, html: str):
 #     print(f"[EMAIL] send_email called. subject={subject!r}")
