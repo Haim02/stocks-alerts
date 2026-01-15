@@ -142,8 +142,9 @@ async def tradingview_webhook(req: Request):
 
     try:
         if send_all or plan_ok:
-            send_email(subject=subject, html=html)
+            result = send_email(subject=subject, html=html)
             print(f"[TV WEBHOOK] email sent subject={subject}")
+            return {"ok": True, "email": result}
         else:
             print("[TV WEBHOOK] email skipped (plan not ok and SEND_EMAIL_ALWAYS=0)")
     except Exception as e:
