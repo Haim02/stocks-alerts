@@ -319,7 +319,6 @@ def process_alert_and_send_email(ticker: str, signal: str, interval: str, tv_pay
     plan_reason = ""
     plan = None
 
-    # 2. בניית Trade Plan
     try:
         plan = build_trade_plan_from_tv(tv_payload, account_size=10_000, risk_pct=0.01, rr_min=2.0)
         if plan:
