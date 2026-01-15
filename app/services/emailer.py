@@ -703,23 +703,49 @@ def build_email(
 
 
 def send_email(subject: str, html: str):
-    """שולח את המייל בפועל באמצעות SMTP"""
     print(f"[EMAIL] send_email called. subject={subject!r}")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = SMTP_USER
     msg["To"] = ALERT_TO_EMAIL
-
     msg.attach(MIMEText(html, "html", "utf-8"))
 
-    print(f"[EMAIL] Connecting to SMTP={SMTP_HOST}:{SMTP_PORT} USER={SMTP_USER} TO={ALERT_TO_EMAIL}")
+    # שינוי הפורט ל-587 במידה ו-465 חסום
+    port = int(os.getenv("SMTP_PORT", "587"))
+    host = os.getenv("SMTP_HOST", "smtp.gmail.com")
 
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
-            smtp.login(SMTP_USER, SMTP_PASS)
-            smtp.send_message(msg)
+        # שימוש ב-SMTP רגיל + starttls במקום SMTP_SSL
+        with smtplib.SMTP(host, port) as server:
+            server.set_debuglevel(1) # מאפשר לראות לוגים מפורטים של התקשורת
+            server.starttls() # אבטחת החיבור
+            server.login(SMTP_USER, SMTP_PASS)
+            server.send_message(msg)
         print("[EMAIL] sent ✅")
     except Exception as e:
         print(f"[EMAIL] FAILED ❌ {type(e).__name__}: {e}")
         raise
+
+
+# def send_email(subject: str, html: str):
+#     """שולח את המייל בפועל באמצעות SMTP"""
+#     print(f"[EMAIL] send_email called. subject={subject!r}")
+
+#     msg = MIMEMultipart("alternative")
+#     msg["Subject"] = subject
+#     msg["From"] = SMTP_USER
+#     msg["To"] = ALERT_TO_EMAIL
+
+#     msg.attach(MIMEText(html, "html", "utf-8"))
+
+#     print(f"[EMAIL] Connecting to SMTP={SMTP_HOST}:{SMTP_PORT} USER={SMTP_USER} TO={ALERT_TO_EMAIL}")
+
+#     try:
+#         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
+#             smtp.login(SMTP_USER, SMTP_PASS)
+#             smtp.send_message(msg)
+#         print("[EMAIL] sent ✅")
+#     except Exception as e:
+#         print(f"[EMAIL] FAILED ❌ {type(e).__name__}: {e}")
+#         raise
