@@ -90,7 +90,7 @@ async def tradingview_webhook(req: Request):
     # 2) News + AI (לא מפילים אם יש בעיה)
     try:
         ai = summarize_news_with_ai(ticker=ticker, tv_payload=tv)
-        ai_summary = ai.get("summary", "")  # ✅ הפלט החדש
+        # ai_summary = ai.get("summary", "")  # ✅ הפלט החדש
         ai_ok = bool(ai.get("ok", False))
         ai_err = ai.get("error")
     except Exception as e:
@@ -142,9 +142,8 @@ async def tradingview_webhook(req: Request):
 
     try:
         if send_all or plan_ok:
-            result = send_email(subject=subject, html=html)
+            send_email(subject=subject, html=html)
             print(f"[TV WEBHOOK] email sent subject={subject}")
-            return {"ok": True, "email": result}
         else:
             print("[TV WEBHOOK] email skipped (plan not ok and SEND_EMAIL_ALWAYS=0)")
     except Exception as e:
