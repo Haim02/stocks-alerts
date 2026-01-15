@@ -444,6 +444,7 @@ from typing import Any, Dict, List, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import socket
+import smtplib
 import yfinance as yf
 
 # הנחה שהקבצים האלו קיימים בפרויקט שלך
@@ -456,7 +457,7 @@ from app.services.ai_news_summarizer import summarize_news_he
 
 # --- הגדרות סביבה ---
 SMTP_HOST = os.getenv("SMTP_HOST", "")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+SMTP_PORT = int(os.getenv("SMTP_PORT", "25"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 ALERT_TO_EMAIL = os.getenv("ALERT_TO_EMAIL", "")
@@ -704,7 +705,10 @@ def build_email(
 
 
 
+
 def send_email(subject: str, html: str):
+    print(f"[EMAIL] Preparing to send: {subject}")
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = SMTP_USER
@@ -712,22 +716,37 @@ def send_email(subject: str, html: str):
     msg.attach(MIMEText(html, "html", "utf-8"))
 
     host = "smtp.gmail.com"
-    port = 587
+    # ננסה 587, אם ימשיך ה-timeout, שווה לנסות לשנות ב-Render ל-25 (לפעמים עובד טוב יותר בענן)
+    port = int(os.getenv("SMTP_PORT", "587"))
 
     try:
-        # פתרון לבעיית Network unreachable: מכריחים שימוש ב-IPv4
+        # פתרון ה-IPv4 שכבר עבד לנו (עברנו את unreachable)
         remote_host = socket.getaddrinfo(host, port, socket.AF_INET)[0][4][0]
-        print(f"[EMAIL] Resolved {host} to {remote_host}. Connecting...")
+        print(f"[EMAIL] Connecting to {remote_host}:{port}...")
 
-        server = smtplib.SMTP(remote_host, port, timeout=20)
+        # הגדלת ה-timeout ל-30 שניות למקרה של רשת איטית ב-Render
+        server = smtplib.SMTP(remote_host, port, timeout=30)
+
+        # debuglevel יראה לנו בתוך הלוגים של Render את השיחה המלאה עם גוגל
+        server.set_debuglevel(1)
+
         server.ehlo()
-        server.starttls()
+        if server.has_ext("STARTTLS"):
+            print("[EMAIL] Starting TLS...")
+            server.starttls()
+            server.ehlo()
+
+        print("[EMAIL] Logging in...")
         server.login(SMTP_USER, SMTP_PASS)
+
         server.send_message(msg)
         server.quit()
-        print(f"[EMAIL] Mail actually sent to {ALERT_TO_EMAIL} ✅")
+        print(f"[EMAIL] SUCCESS ✅ Sent to {ALERT_TO_EMAIL}")
+
+    except socket.timeout:
+        print(f"[EMAIL] ERROR ❌: Connection timed out after 30 seconds.")
     except Exception as e:
-        print(f"[EMAIL] ACTUAL ERROR ❌: {e}")
+        print(f"[EMAIL] ACTUAL ERROR ❌: {type(e).__name__}: {e}")
 
 # def send_email(subject: str, html: str):
 #     print(f"[EMAIL] send_email called. subject={subject!r}")
