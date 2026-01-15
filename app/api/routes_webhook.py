@@ -174,74 +174,177 @@
 #     }
 
 
+# from __future__ import annotations
+# import os
+# from typing import Any, Dict
+# from fastapi import APIRouter, Request
+
+# from app.services.emailer import build_email_html, send_email
+# from app.services.news_ai import summarize_news_with_ai
+# from app.ta.trade_engine_tv import build_trade_plan_from_tv
+
+# router = APIRouter()
+
+# @router.post("/webhook/tradingview")
+# async def tradingview_webhook(req: Request):
+#     print('[TV WEBHOOK] Request received')
+
+#     # --- 0) אתחול משתנים למניעת שגיאות UnboundLocalError ---
+#     tv: Dict[str, Any] = {}
+#     ticker, signal, interval = "UNKNOWN", "UNKNOWN", "UNKNOWN"
+#     ai_summary = "המתנה לסיכום AI..."
+#     ai_err = None
+#     ai_ok = False
+#     plan_block = "לא נוצר תוכנית מסחר"
+#     plan_ok = False
+#     plan_reason = ""
+#     plan = None
+
+#     # --- 1) קבלת ה-JSON ---
+#     try:
+#         tv = await req.json()
+#     except Exception as e:
+#         print(f"[TV WEBHOOK] JSON parse error: {e}")
+#         return {"received": False, "error": f"Invalid JSON: {e}"}
+
+#     # חילוץ נתונים בסיסיים
+#     ticker = str(tv.get("ticker", "")).upper().strip() or "UNKNOWN"
+#     signal = str(tv.get("signal", "")).upper().strip() or "UNKNOWN"
+#     interval = str(tv.get("interval", "")).upper().strip() or "UNKNOWN"
+
+#     print(f"[TV WEBHOOK] hit ticker={ticker} signal={signal} interval={interval}")
+
+#     # --- 2) Trade plan ---
+#     try:
+#         plan = build_trade_plan_from_tv(tv, account_size=10_000, risk_pct=0.01, rr_min=2.0)
+#         if plan:
+#             plan_ok = bool(getattr(plan, "ok", False))
+#             plan_reason = getattr(plan, "reason", "") or ""
+#             try:
+#                 plan_block = str(plan)
+#             except Exception:
+#                 plan_block = repr(plan)
+#     except Exception as e:
+#         print(f"[TV WEBHOOK] trade plan error: {e}")
+#         plan_reason = f"Exception: {str(e)}"
+
+#     # --- 3) News + AI ---
+#     try:
+#         ai = summarize_news_with_ai(ticker=ticker, tv_payload=tv)
+#         if ai:
+#             ai_summary = ai.get("summary") or ai.get("news_summary") or ai.get("output_text") or "No content found"
+#             ai_ok = bool(ai.get("ok", False))
+#             ai_err = ai.get("error")
+#     except Exception as e:
+#         ai_ok = False
+#         ai_err = str(e)
+#         ai_summary = "⚠️ סיכום AI נכשל עקב שגיאה פנימית."
+#         print(f"[TV WEBHOOK] AI error: {e}")
+
+#     # --- 4) בניית HTML למייל ---
+#     html_body = f"""
+#     <div style="direction: ltr; font-family: sans-serif;">
+#         <p><b>Ticker:</b> {ticker}</p>
+#         <p><b>Signal:</b> {signal}</p>
+#         <p><b>Interval:</b> {interval}</p>
+#         <hr/>
+#         <h3>Trade Plan</h3>
+#         <p><b>OK:</b> {plan_ok}</p>
+#         <p><b>Reason:</b> {plan_reason}</p>
+#         <pre style="background:#f6f6f6;padding:10px;border-radius:8px;white-space:pre-wrap;">{plan_block}</pre>
+#         <hr/>
+#         <h3>News + AI</h3>
+#         <p><b>AI OK:</b> {ai_ok}</p>
+#         <p><b>AI Error:</b> {ai_err}</p>
+#         <pre style="background:#f6f6f6;padding:10px;border-radius:8px;white-space:pre-wrap;">{ai_summary}</pre>
+#     </div>
+#     """
+
+#     subject_prefix = "OK" if plan_ok else "NOT OK"
+#     subject = f"[stocks-alerts] {subject_prefix} {ticker} {signal}"
+#     html = build_email_html(subject, html_body)
+
+#     # הגדרות שליחה
+#     send_all = os.getenv("SEND_EMAIL_ALWAYS", "1").strip() == "1"
+
+#     print(f"[TV WEBHOOK] will_send={(send_all or plan_ok)}")
+#     print(f"[TV WEBHOOK] subject={subject}")
+
+#     # --- 5) שליחת המייל ---
+#     try:
+#         if send_all or plan_ok:
+#             send_email(subject=subject, html=html)
+#             print(f"[TV WEBHOOK] email sent")
+#         else:
+#             print("[TV WEBHOOK] email skipped (plan not ok and SEND_EMAIL_ALWAYS=0)")
+#     except Exception as e:
+#         print(f"[TV WEBHOOK] SMTP error: {e}")
+
+#     # --- 6) החזרת תשובה ל-TradingView ---
+#     return {
+#         "received": True,
+#         "ticker": ticker,
+#         "signal": signal,
+#         "interval": interval,
+#         "plan_ok": plan_ok,
+#         "ai_ok": ai_ok
+#     }
+
+
 from __future__ import annotations
 import os
 from typing import Any, Dict
-from fastapi import APIRouter, Request
 
+# הוספנו את BackgroundTasks
+from fastapi import APIRouter, Request, BackgroundTasks
+
+# Imports - ודא שהקבצים האלו קיימים בנתיבים האלו
 from app.services.emailer import build_email_html, send_email
 from app.services.news_ai import summarize_news_with_ai
 from app.ta.trade_engine_tv import build_trade_plan_from_tv
 
 router = APIRouter()
 
-@router.post("/webhook/tradingview")
-async def tradingview_webhook(req: Request):
-    print('[TV WEBHOOK] Request received')
+# --- פונקציית עזר למשימות רקע (הלוגיקה הכבדה) ---
+def process_alert_and_send_email(ticker: str, signal: str, interval: str, tv_payload: Dict[str, Any]):
+    print(f"[BG TASK] Starting processing for {ticker}...")
 
-    # --- 0) אתחול משתנים למניעת שגיאות UnboundLocalError ---
-    tv: Dict[str, Any] = {}
-    ticker, signal, interval = "UNKNOWN", "UNKNOWN", "UNKNOWN"
-    ai_summary = "המתנה לסיכום AI..."
+    # 1. אתחול משתנים (כדי למנוע קריסות)
+    ai_summary = "AI summary not available."
     ai_err = None
     ai_ok = False
-    plan_block = "לא נוצר תוכנית מסחר"
+
+    plan_block = "No trade plan generated."
     plan_ok = False
     plan_reason = ""
     plan = None
 
-    # --- 1) קבלת ה-JSON ---
+    # 2. בניית Trade Plan
     try:
-        tv = await req.json()
-    except Exception as e:
-        print(f"[TV WEBHOOK] JSON parse error: {e}")
-        return {"received": False, "error": f"Invalid JSON: {e}"}
-
-    # חילוץ נתונים בסיסיים
-    ticker = str(tv.get("ticker", "")).upper().strip() or "UNKNOWN"
-    signal = str(tv.get("signal", "")).upper().strip() or "UNKNOWN"
-    interval = str(tv.get("interval", "")).upper().strip() or "UNKNOWN"
-
-    print(f"[TV WEBHOOK] hit ticker={ticker} signal={signal} interval={interval}")
-
-    # --- 2) Trade plan ---
-    try:
-        plan = build_trade_plan_from_tv(tv, account_size=10_000, risk_pct=0.01, rr_min=2.0)
+        plan = build_trade_plan_from_tv(tv_payload, account_size=10_000, risk_pct=0.01, rr_min=2.0)
         if plan:
             plan_ok = bool(getattr(plan, "ok", False))
             plan_reason = getattr(plan, "reason", "") or ""
             try:
                 plan_block = str(plan)
-            except Exception:
+            except:
                 plan_block = repr(plan)
     except Exception as e:
-        print(f"[TV WEBHOOK] trade plan error: {e}")
-        plan_reason = f"Exception: {str(e)}"
+        print(f"[BG TASK] Trade plan error: {e}")
+        plan_reason = f"Error: {e}"
 
-    # --- 3) News + AI ---
+    # 3. קריאה ל-AI + חדשות
     try:
-        ai = summarize_news_with_ai(ticker=ticker, tv_payload=tv)
+        ai = summarize_news_with_ai(ticker=ticker, tv_payload=tv_payload)
         if ai:
-            ai_summary = ai.get("summary") or ai.get("news_summary") or ai.get("output_text") or "No content found"
+            ai_summary = ai.get("summary") or ai.get("news_summary") or ai.get("output_text") or "No text."
             ai_ok = bool(ai.get("ok", False))
             ai_err = ai.get("error")
     except Exception as e:
-        ai_ok = False
-        ai_err = str(e)
-        ai_summary = "⚠️ סיכום AI נכשל עקב שגיאה פנימית."
-        print(f"[TV WEBHOOK] AI error: {e}")
+        print(f"[BG TASK] AI error: {e}")
+        ai_summary = f"Error fetching AI summary: {e}"
 
-    # --- 4) בניית HTML למייל ---
+    # 4. בניית HTML
     html_body = f"""
     <div style="direction: ltr; font-family: sans-serif;">
         <p><b>Ticker:</b> {ticker}</p>
@@ -264,28 +367,37 @@ async def tradingview_webhook(req: Request):
     subject = f"[stocks-alerts] {subject_prefix} {ticker} {signal}"
     html = build_email_html(subject, html_body)
 
-    # הגדרות שליחה
+    # 5. שליחת המייל
     send_all = os.getenv("SEND_EMAIL_ALWAYS", "1").strip() == "1"
 
-    print(f"[TV WEBHOOK] will_send={(send_all or plan_ok)}")
-    print(f"[TV WEBHOOK] subject={subject}")
-
-    # --- 5) שליחת המייל ---
     try:
         if send_all or plan_ok:
             send_email(subject=subject, html=html)
-            print(f"[TV WEBHOOK] email sent")
+            print(f"[BG TASK] Email sent successfully for {ticker}")
         else:
-            print("[TV WEBHOOK] email skipped (plan not ok and SEND_EMAIL_ALWAYS=0)")
+            print(f"[BG TASK] Email skipped for {ticker} (Plan NOT OK)")
     except Exception as e:
-        print(f"[TV WEBHOOK] SMTP error: {e}")
+        print(f"[BG TASK] Email sending failed: {e}")
 
-    # --- 6) החזרת תשובה ל-TradingView ---
-    return {
-        "received": True,
-        "ticker": ticker,
-        "signal": signal,
-        "interval": interval,
-        "plan_ok": plan_ok,
-        "ai_ok": ai_ok
-    }
+
+# --- ה-Route הראשי (מהיר מאוד) ---
+@router.post("/webhook/tradingview")
+async def tradingview_webhook(req: Request, background_tasks: BackgroundTasks):
+    # קודם כל מקבלים את המידע
+    try:
+        tv = await req.json()
+    except Exception as e:
+        return {"received": False, "error": str(e)}
+
+    # מחלצים פרטים בסיסיים
+    ticker = str(tv.get("ticker", "UNKNOWN")).upper().strip()
+    signal = str(tv.get("signal", "UNKNOWN")).upper().strip()
+    interval = str(tv.get("interval", "UNKNOWN")).upper().strip()
+
+    print(f"[WEBHOOK] Received: {ticker} | {signal}. Sending to background...")
+
+    # מוסיפים את המשימה לרקע (הפונקציה למעלה)
+    background_tasks.add_task(process_alert_and_send_email, ticker, signal, interval, tv)
+
+    # מחזירים תשובה מיידית ל-TradingView!
+    return {"status": "processing", "ticker": ticker, "msg": "Handled in background"}

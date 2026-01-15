@@ -703,7 +703,7 @@ def build_email(
 
 
 def send_email(subject: str, html: str):
-    print(f"[EMAIL] send_email called. subject={subject!r}")
+    print(f"[EMAIL] Connecting to {SMTP_HOST} on port 587...")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -711,21 +711,56 @@ def send_email(subject: str, html: str):
     msg["To"] = ALERT_TO_EMAIL
     msg.attach(MIMEText(html, "html", "utf-8"))
 
-    # שינוי הפורט ל-587 במידה ו-465 חסום
-    port = int(os.getenv("SMTP_PORT", "587"))
-    host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-
     try:
-        # שימוש ב-SMTP רגיל + starttls במקום SMTP_SSL
-        with smtplib.SMTP(host, port) as server:
-            server.set_debuglevel(1) # מאפשר לראות לוגים מפורטים של התקשורת
-            server.starttls() # אבטחת החיבור
-            server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-        print("[EMAIL] sent ✅")
+        # הוספנו timeout=15 כדי שאם הרשת חסומה, נדע מזה מהר ולא נתקע
+        server = smtplib.SMTP(SMTP_HOST, 587, timeout=15)
+
+        print("[EMAIL] Identification (EHLO)...")
+        server.ehlo()
+
+        print("[EMAIL] Starting TLS...")
+        server.starttls()
+
+        server.ehlo()
+
+        print("[EMAIL] Logging in...")
+        server.login(SMTP_USER, SMTP_PASS)
+
+        print("[EMAIL] Sending message content...")
+        server.send_message(msg)
+
+        server.quit()
+        print("[EMAIL] Mail sent successfully! ✅")
+
     except Exception as e:
-        print(f"[EMAIL] FAILED ❌ {type(e).__name__}: {e}")
-        raise
+        print(f"[EMAIL] FAILED ❌ {type(e).__name__}: {str(e)}")
+        # אנחנו לא מרימים שגיאה (raise) כדי שה-FastAPI יחזיר 200 ל-TradingView
+
+
+# def send_email(subject: str, html: str):
+#     print(f"[EMAIL] send_email called. subject={subject!r}")
+
+#     msg = MIMEMultipart("alternative")
+#     msg["Subject"] = subject
+#     msg["From"] = SMTP_USER
+#     msg["To"] = ALERT_TO_EMAIL
+#     msg.attach(MIMEText(html, "html", "utf-8"))
+
+#     # שינוי הפורט ל-587 במידה ו-465 חסום
+#     port = int(os.getenv("SMTP_PORT", "587"))
+#     host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+
+#     try:
+#         # שימוש ב-SMTP רגיל + starttls במקום SMTP_SSL
+#         with smtplib.SMTP(host, port) as server:
+#             server.set_debuglevel(1) # מאפשר לראות לוגים מפורטים של התקשורת
+#             server.starttls() # אבטחת החיבור
+#             server.login(SMTP_USER, SMTP_PASS)
+#             server.send_message(msg)
+#         print("[EMAIL] sent ✅")
+#     except Exception as e:
+#         print(f"[EMAIL] FAILED ❌ {type(e).__name__}: {e}")
+#         raise
 
 
 # def send_email(subject: str, html: str):
