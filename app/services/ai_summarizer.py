@@ -1,7 +1,7 @@
 import os
 from openai import OpenAI
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.2")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5")
 
 
 def summarize_fundamentals_he(ai_input: str) -> str:

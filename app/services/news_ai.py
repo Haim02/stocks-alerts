@@ -93,6 +93,8 @@ import os
 from typing import Any, Dict, Optional
 
 from openai import OpenAI
+from dotenv import load_dotenv
+load_dotenv()
 
 
 def _get_client() -> OpenAI:
@@ -117,7 +119,7 @@ def summarize_news_with_ai(
       "error": str|None
     }
     """
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    model = os.getenv("OPENAI_MODEL", "gpt-3.5")
 
     tv_payload = tv_payload or {}
     ctx = {

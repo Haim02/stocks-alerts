@@ -1178,6 +1178,8 @@ from app.ta.fundamentals_us import fetch_fundamentals_us
 from app.services.ai_summarizer import summarize_fundamentals_he
 from app.services.news_provider import get_company_news
 from app.services.ai_news_summarizer import summarize_news_he
+from dotenv import load_dotenv
+load_dotenv()
 
 
 # ======================================================

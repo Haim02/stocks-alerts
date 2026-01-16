@@ -1,6 +1,8 @@
 import os
 from datetime import datetime
 from openai import OpenAI
+from dotenv import load_dotenv
+load_dotenv()
 
 
 def summarize_news_he(ticker: str, news: list[dict], signal: str) -> str:
@@ -9,7 +11,7 @@ def summarize_news_he(ticker: str, news: list[dict], signal: str) -> str:
         raise RuntimeError("OPENAI_API_KEY missing in environment")
 
     client = OpenAI(api_key=api_key)
-    model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    model = os.getenv("OPENAI_MODEL", "gpt-3.5")
 
     items = []
     for n in (news or [])[:6]:

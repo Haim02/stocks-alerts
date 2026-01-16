@@ -54,7 +54,7 @@ def summarize_one(candidate: Dict[str, Any]) -> str:
     prompt = build_ai_prompt(candidate)
 
     resp = c.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        model=os.getenv("OPENAI_MODEL", "gpt-3.5"),
         messages=[
             {"role": "system", "content": "You are a careful financial assistant."},
             {"role": "user", "content": prompt},
