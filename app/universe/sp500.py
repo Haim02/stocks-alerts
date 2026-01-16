@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import pandas as pd
 import requests
+from io import StringIO
 
 WIKI_SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 
@@ -45,7 +46,7 @@ def get_sp500_tickers() -> list[str]:
     resp.raise_for_status()
 
     # קוראים את הטבלאות מתוך ה-HTML שהבאנו בעצמנו
-    tables = pd.read_html(resp.text)
+    tables = pd.read_html(StringIO(resp.text))
     if not tables:
         raise RuntimeError("No tables found on Wikipedia page")
 
