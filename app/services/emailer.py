@@ -1286,7 +1286,6 @@ def build_email(
         ai_news = summarize_news_he(
             ticker=ticker,
             signal=signal,
-            tv_payload=tv_payload,
             news=news,
         )
     except Exception as e:
