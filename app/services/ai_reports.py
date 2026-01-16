@@ -1,7 +1,7 @@
 import os
 from openai import OpenAI
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 def summarize_report_he(ticker: str, form: str, filing_date: str, sections: dict[str, str]) -> str:
     api_key = os.getenv("OPENAI_API_KEY")

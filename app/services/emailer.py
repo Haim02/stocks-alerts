@@ -1444,9 +1444,63 @@ def build_email(
     return subject, build_email_html(subject, body)
 
 
-# ======================================================
-# Send email (SendGrid default; SMTP optional)
-# ======================================================
+
+# def send_email(subject: str, html: str) -> None:
+#     """
+#     ב-Render: מומלץ EMAIL_PROVIDER=sendgrid (SMTP חסום בהרבה מקרים)
+#     בלוקאלי: אפשר EMAIL_PROVIDER=smtp
+#     """
+#     if not ALERT_TO_EMAIL:
+#         raise RuntimeError("ALERT_TO_EMAIL is missing in env")
+
+#     print(f"[EMAIL] provider={EMAIL_PROVIDER} subject={subject!r} to={ALERT_TO_EMAIL}")
+
+#     # -------- SendGrid (recommended) --------
+#     if EMAIL_PROVIDER == "sendgrid":
+#         if not SENDGRID_API_KEY:
+#             raise RuntimeError("SENDGRID_API_KEY is missing in env")
+#         if not FROM_EMAIL:
+#             raise RuntimeError("FROM_EMAIL is missing (must be verified in SendGrid)")
+
+#         message = Mail(
+#             from_email=(FROM_EMAIL, FROM_NAME),
+#             to_emails=ALERT_TO_EMAIL,
+#             subject=subject,
+#             html_content=html,
+#         )
+#         try:
+#             sg = SendGridAPIClient(SENDGRID_API_KEY)
+#             resp = sg.send(message)
+#             print(f"[EMAIL] SendGrid OK status={resp.status_code}")
+#             return
+#         except Exception as e:
+#             print(f"[EMAIL] SendGrid FAILED: {e}")
+#             raise
+
+#     # -------- SMTP fallback (local) --------
+#     if not SMTP_USER or not SMTP_PASS:
+#         raise RuntimeError("SMTP_USER/SMTP_PASS missing for SMTP provider")
+
+#     msg = MIMEMultipart("alternative")
+#     msg["Subject"] = subject
+#     msg["From"] = SMTP_USER
+#     msg["To"] = ALERT_TO_EMAIL
+#     msg.attach(MIMEText(html, "html", "utf-8"))
+
+#     try:
+#         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+#             server.ehlo()
+#             if server.has_extn("STARTTLS"):
+#                 server.starttls()
+#                 server.ehlo()
+#             server.login(SMTP_USER, SMTP_PASS)
+#             server.send_message(msg)
+#         print("[EMAIL] SMTP OK ✅")
+#     except Exception as e:
+#         print(f"[EMAIL] SMTP FAILED: {type(e).__name__}: {e}")
+#         raise
+
+
 def send_email(subject: str, html: str) -> None:
     """
     ב-Render: מומלץ EMAIL_PROVIDER=sendgrid (SMTP חסום בהרבה מקרים)

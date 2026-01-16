@@ -11,7 +11,7 @@ def summarize_news_he(ticker: str, news: list[dict], signal: str) -> str:
         raise RuntimeError("OPENAI_API_KEY missing in environment")
 
     client = OpenAI(api_key=api_key)
-    model = os.getenv("OPENAI_MODEL", "gpt-3.5")
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
     items = []
     for n in (news or [])[:6]:
