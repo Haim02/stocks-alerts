@@ -1159,7 +1159,6 @@
 from __future__ import annotations
 
 import os
-import smtplib
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
@@ -1168,9 +1167,7 @@ from email.mime.text import MIMEText
 
 import yfinance as yf
 
-# SendGrid (HTTP API) — מומלץ ל-Render
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+import requests
 
 # הפרויקט שלך
 from app.ta.ta_engine import confluence_score, trade_plan, checklist_technical
@@ -1192,11 +1189,15 @@ SMTP_PASS = os.getenv("SMTP_PASS", "")
 
 ALERT_TO_EMAIL = os.getenv("ALERT_TO_EMAIL", "")
 
-EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "sendgrid").lower().strip()
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
 
-FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)  # ב-SendGrid חייב להיות מאומת
-FROM_NAME = os.getenv("FROM_NAME", "stocks-alerts")
+
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "resend").lower().strip()
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "re_R7yZyrEW_MFmqXx5HQ7fE2yp5UQ4scpMC").strip()
+
+ALERT_TO_EMAIL = os.getenv("ALERT_TO_EMAIL", "tradinghaim12@gmail.com").strip()
+
+FROM_EMAIL = os.getenv("FROM_EMAIL", "tradinghaim12@gmail.com").strip()      # חייב להיות מייל/דומיין מאומת ב-Resend
+FROM_NAME = os.getenv("FROM_NAME", "stocks-alerts").strip()
 
 
 # ======================================================
@@ -1500,58 +1501,42 @@ def build_email(
 #         print(f"[EMAIL] SMTP FAILED: {type(e).__name__}: {e}")
 #         raise
 
-
 def send_email(subject: str, html: str) -> None:
     """
-    ב-Render: מומלץ EMAIL_PROVIDER=sendgrid (SMTP חסום בהרבה מקרים)
-    בלוקאלי: אפשר EMAIL_PROVIDER=smtp
+    שולח מייל דרך Resend בלבד (HTTP API).
     """
+    if EMAIL_PROVIDER != "resend":
+        raise RuntimeError(f"EMAIL_PROVIDER must be 'resend' (got {EMAIL_PROVIDER!r})")
+
+    if not RESEND_API_KEY:
+        raise RuntimeError("RESEND_API_KEY is missing in env")
+
     if not ALERT_TO_EMAIL:
         raise RuntimeError("ALERT_TO_EMAIL is missing in env")
 
-    print(f"[EMAIL] provider={EMAIL_PROVIDER} subject={subject!r} to={ALERT_TO_EMAIL}")
+    if not FROM_EMAIL:
+        raise RuntimeError("FROM_EMAIL is missing in env (must be verified in Resend)")
 
-    # -------- SendGrid (recommended) --------
-    if EMAIL_PROVIDER == "sendgrid":
-        if not SENDGRID_API_KEY:
-            raise RuntimeError("SENDGRID_API_KEY is missing in env")
-        if not FROM_EMAIL:
-            raise RuntimeError("FROM_EMAIL is missing (must be verified in SendGrid)")
+    payload = {
+        "from": f"{FROM_NAME} <{FROM_EMAIL}>",
+        "to": [ALERT_TO_EMAIL],
+        "subject": subject,
+        "html": html,
+    }
 
-        message = Mail(
-            from_email=(FROM_EMAIL, FROM_NAME),
-            to_emails=ALERT_TO_EMAIL,
-            subject=subject,
-            html_content=html,
-        )
-        try:
-            sg = SendGridAPIClient(SENDGRID_API_KEY)
-            resp = sg.send(message)
-            print(f"[EMAIL] SendGrid OK status={resp.status_code}")
-            return
-        except Exception as e:
-            print(f"[EMAIL] SendGrid FAILED: {e}")
-            raise
+    print(f"[EMAIL] provider=resend subject={subject!r} to={ALERT_TO_EMAIL} from={FROM_EMAIL}")
 
-    # -------- SMTP fallback (local) --------
-    if not SMTP_USER or not SMTP_PASS:
-        raise RuntimeError("SMTP_USER/SMTP_PASS missing for SMTP provider")
+    resp = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=30,
+    )
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = SMTP_USER
-    msg["To"] = ALERT_TO_EMAIL
-    msg.attach(MIMEText(html, "html", "utf-8"))
+    if resp.status_code >= 300:
+        raise RuntimeError(f"Resend FAILED status={resp.status_code} body={resp.text}")
 
-    try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
-            server.ehlo()
-            if server.has_extn("STARTTLS"):
-                server.starttls()
-                server.ehlo()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-        print("[EMAIL] SMTP OK ✅")
-    except Exception as e:
-        print(f"[EMAIL] SMTP FAILED: {type(e).__name__}: {e}")
-        raise
+    print("[EMAIL] Resend OK ✅")

@@ -393,6 +393,211 @@
 
 
 
+# # app/jobs/sp500_scan.py
+# from __future__ import annotations
+
+# import os
+# from datetime import datetime
+# from typing import Any, Dict, List
+
+# import yfinance as yf
+
+# from app.ta.ta_engine import confluence_score, trade_plan, checklist_technical
+# from app.services.emailer import build_email, send_email
+# from app.universe.sp500 import get_sp500_tickers
+# from datetime import datetime, timezone, timedelta
+
+# from sqlalchemy import select
+
+# from app.db.db import SessionLocal  # אם אצלך זה app.db.db import SessionLocal -> תחליף
+# from app.db.email_send_log import EmailSendLog
+
+
+# from dotenv import load_dotenv
+# load_dotenv()
+
+
+# def _normalize_yf_df(df):
+#     """
+#     Normalize yfinance columns to lower-case names expected by your TA engine:
+#     open, high, low, close, volume
+#     """
+#     if df is None or df.empty:
+#         return df
+
+#     # If MultiIndex columns exist, flatten
+#     if hasattr(df.columns, "levels"):
+#         df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+
+#     df = df.rename(
+#         columns={
+#             "Open": "open",
+#             "High": "high",
+#             "Low": "low",
+#             "Close": "close",
+#             "Adj Close": "adj_close",
+#             "Volume": "volume",
+#         }
+#     )
+
+#     # Keep only what we need
+#     cols = [c for c in ["open", "high", "low", "close", "volume"] if c in df.columns]
+#     df = df[cols].dropna()
+
+#     return df
+
+
+# def analyze_ticker(ticker: str, interval: str = "1d", period: str = "1y") -> Dict[str, Any]:
+#     """
+#     Fetch data -> TA -> trade plan.
+#     Returns dict with analysis results.
+#     """
+#     df = yf.download(
+#         ticker,
+#         period=period,
+#         interval=interval,
+#         auto_adjust=False,
+#         progress=False,
+#     )
+
+#     df = _normalize_yf_df(df)
+#     if df is None or df.empty:
+#         return {
+#             "ticker": ticker,
+#             "ok": False,
+#             "reason": "empty_yfinance_df",
+#         }
+
+#     tech = confluence_score(df)
+#     plan = trade_plan(df, tech, rr_min=2.0)
+#     chk = checklist_technical(df, tech)
+
+#     close = float(df["close"].iloc[-1])
+
+#     return {
+#         "ticker": ticker,
+#         "ok": bool(plan.get("ok")),
+#         "reason": plan.get("reason", ""),
+#         "tech": tech,
+#         "plan": plan,
+#         "checklist": chk,
+#         "close": close,
+#         "interval": interval,
+#         "period": period,
+#     }
+
+# def _was_sent_recently(ticker: str, signal: str, hours: int = 12) -> bool:
+#     since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+#     db = SessionLocal()
+#     try:
+#         stmt = (
+#             select(EmailSendLog.id)
+#             .where(
+#                 EmailSendLog.ticker == ticker,
+#                 EmailSendLog.signal == signal,
+#                 EmailSendLog.sent_at >= since,
+#             )
+#             .limit(1)
+#         )
+#         return db.execute(stmt).first() is not None
+#     finally:
+#         db.close()
+
+
+# def _log_sent(ticker: str, signal: str, subject: str | None) -> None:
+#     db = SessionLocal()
+#     try:
+#         db.add(EmailSendLog(ticker=ticker, signal=signal, subject=subject))
+#         db.commit()
+#     finally:
+#         db.close()
+
+
+# def run_scan() -> Dict[str, Any]:
+#     """
+#     Main scan runner.
+#     - scans S&P500 tickers
+#     - sends email only when plan ok (or SEND_EMAIL_ALWAYS=1)
+#     """
+#     # controls
+#     limit = int(os.getenv("SP500_SCAN_LIMIT", "0"))  # 0 = no limit
+#     send_all = str(os.getenv("SEND_EMAIL_ALWAYS", "0")).strip() == "1"
+
+#     # If you want "every 12 hours one email summary", set this to 1 and build a summary message.
+#     # For now: send per-ticker only if plan ok (or send_all).
+#     tickers = get_sp500_tickers()
+
+#     if limit and limit > 0:
+#         tickers = tickers[:limit]
+
+#     passed: List[str] = []
+#     errors: List[str] = []
+#     sent = 0
+
+#     print(f"[SP500_SCAN] start tickers={len(tickers)} limit={limit or 'none'} utc={datetime.utcnow().isoformat(timespec='seconds')}")
+
+#     for ticker in tickers:
+#         try:
+#             res = analyze_ticker(ticker)
+
+#             # "plan ok" means interesting candidate
+#             plan_ok = bool(res.get("ok"))
+#             if plan_ok:
+#                 passed.append(ticker)
+
+#             will_send = send_all or plan_ok
+#             if not will_send:
+#                 continue
+
+#             # build full email with your existing builder
+#             subject, html = build_email(
+#                 ticker=ticker,
+#                 interval=res.get("interval", "1d"),
+#                 signal=("PLAN_OK" if plan_ok else "SCAN"),
+#                 close=float(res.get("close", 0.0)),
+#                 tv_payload={
+#                     "source": "sp500_scan",
+#                     "plan_ok": plan_ok,
+#                     "reason": res.get("reason", ""),
+#                     "score": (res.get("tech") or {}).get("score"),
+#                 },
+#             )
+
+#             signal = ("PLAN_OK" if plan_ok else "SCAN")
+#             cooldown_hours = int(os.getenv("EMAIL_COOLDOWN_HOURS", "12"))
+
+#             if _was_sent_recently(ticker, signal, hours=cooldown_hours):
+#                 print(f"[SP500_SCAN] skip {ticker} signal={signal} (sent < {cooldown_hours}h)")
+#                 continue
+
+
+#             send_email(subject=subject, html=html)
+#             _log_sent(ticker, signal, subject)
+#             sent += 1
+#             print(f"[SP500_SCAN] email sent ticker={ticker} plan_ok={plan_ok}")
+
+#         except Exception as e:
+#             msg = f"{ticker}: {e}"
+#             errors.append(msg)
+#             print(f"[SP500_SCAN] error {msg}")
+
+#     out = {"sent": sent, "passed": passed, "errors": errors}
+#     print(f"[SP500_SCAN] done {out}")
+#     return out
+
+
+# def main():
+#     run_scan()
+
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+
+
 # app/jobs/sp500_scan.py
 from __future__ import annotations
 
@@ -405,6 +610,14 @@ import yfinance as yf
 from app.ta.ta_engine import confluence_score, trade_plan, checklist_technical
 from app.services.emailer import build_email, send_email
 from app.universe.sp500 import get_sp500_tickers
+from datetime import datetime, timezone, timedelta
+
+from sqlalchemy import select
+
+from app.db.db import SessionLocal  # אם אצלך זה app.db.db import SessionLocal -> תחליף
+from app.db.email_send_log import EmailSendLog
+
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -478,6 +691,33 @@ def analyze_ticker(ticker: str, interval: str = "1d", period: str = "1y") -> Dic
         "period": period,
     }
 
+def _was_sent_recently(ticker: str, signal: str, hours: int = 12) -> bool:
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    db = SessionLocal()
+    try:
+        stmt = (
+            select(EmailSendLog.id)
+            .where(
+                EmailSendLog.ticker == ticker,
+                EmailSendLog.signal == signal,
+                EmailSendLog.sent_at >= since,
+            )
+            .limit(1)
+        )
+        return db.execute(stmt).first() is not None
+    finally:
+        db.close()
+
+
+def _log_sent(ticker: str, signal: str, subject: str | None) -> None:
+    db = SessionLocal()
+    try:
+        db.add(EmailSendLog(ticker=ticker, signal=signal, subject=subject))
+        db.commit()
+    finally:
+        db.close()
+
 
 def run_scan() -> Dict[str, Any]:
     """
@@ -529,7 +769,16 @@ def run_scan() -> Dict[str, Any]:
                 },
             )
 
+            signal = ("PLAN_OK" if plan_ok else "SCAN")
+            cooldown_hours = int(os.getenv("EMAIL_COOLDOWN_HOURS", "12"))
+
+            if _was_sent_recently(ticker, signal, hours=cooldown_hours):
+                print(f"[SP500_SCAN] skip {ticker} signal={signal} (sent < {cooldown_hours}h)")
+                continue
+
+
             send_email(subject=subject, html=html)
+            _log_sent(ticker, signal, subject)
             sent += 1
             print(f"[SP500_SCAN] email sent ticker={ticker} plan_ok={plan_ok}")
 
