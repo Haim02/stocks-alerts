@@ -690,6 +690,9 @@ from fastapi import FastAPI
 
 from app.api.routes_health import router as health_router
 from app.api.routes_webhook import router as webhook_router
+from dotenv import load_dotenv
+load_dotenv()
+
 
 app = FastAPI(title="stocks-alerts")
 
